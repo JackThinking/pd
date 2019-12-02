@@ -76,6 +76,7 @@ type Server struct {
 	scheduleOpt *config.ScheduleOption
 	handler     *Handler
 
+	ctx              context.Context
 	serverLoopCtx    context.Context
 	serverLoopCancel func()
 	serverLoopWg     sync.WaitGroup
@@ -104,7 +105,7 @@ type Server struct {
 }
 
 // HandlerBuilder builds a server HTTP handler.
-type HandlerBuilder func(*Server) (http.Handler, APIGroup)
+type HandlerBuilder func(context.Context, *Server) (http.Handler, APIGroup)
 
 // APIGroup used to register the api service.
 type APIGroup struct {
@@ -127,7 +128,7 @@ func combineBuilderServerHTTPService(svr *Server, apiBuilders ...HandlerBuilder)
 	router := mux.NewRouter()
 	registerMap := make(map[string]struct{})
 	for _, build := range apiBuilders {
-		handler, info := build(svr)
+		handler, info := build(svr.ctx, svr)
 		var pathPrefix string
 		if info.IsCore {
 			pathPrefix = CorePath
@@ -149,7 +150,7 @@ func combineBuilderServerHTTPService(svr *Server, apiBuilders ...HandlerBuilder)
 }
 
 // CreateServer creates the UNINITIALIZED pd server with given configuration.
-func CreateServer(cfg *config.Config, apiBuilders ...HandlerBuilder) (*Server, error) {
+func CreateServer(ctx context.Context, cfg *config.Config, apiBuilders ...HandlerBuilder) (*Server, error) {
 	log.Info("PD Config", zap.Reflect("config", cfg))
 	rand.Seed(time.Now().UnixNano())
 
@@ -157,6 +158,7 @@ func CreateServer(cfg *config.Config, apiBuilders ...HandlerBuilder) (*Server, e
 		cfg:         cfg,
 		scheduleOpt: config.NewScheduleOption(cfg),
 		member:      &member.Member{},
+		ctx:         ctx,
 	}
 	s.handler = newHandler(s)
 
@@ -284,8 +286,6 @@ func (s *Server) startServer(ctx context.Context) error {
 	s.storage = core.NewStorage(kvBase).SetRegionStorage(regionStorage)
 	s.cluster = newRaftCluster(ctx, s, s.clusterID)
 	s.hbStreams = newHeartbeatStreams(ctx, s.clusterID, s.cluster)
-	// Server has started.
-	atomic.StoreInt64(&s.isServing, 1)
 	return nil
 }
 
@@ -340,28 +340,28 @@ func (s *Server) IsClosed() bool {
 }
 
 // Run runs the pd server.
-func (s *Server) Run(ctx context.Context) error {
-	go StartMonitor(ctx, time.Now, func() {
+func (s *Server) Run() error {
+	go StartMonitor(s.ctx, time.Now, func() {
 		log.Error("system time jumps backward")
 		timeJumpBackCounter.Inc()
 	})
 
-	if err := s.startEtcd(ctx); err != nil {
+	if err := s.startEtcd(s.ctx); err != nil {
 		return err
 	}
 
-	if err := s.startServer(ctx); err != nil {
+	if err := s.startServer(s.ctx); err != nil {
 		return err
 	}
 
-	s.startServerLoop(ctx)
+	s.startServerLoop(s.ctx)
 
 	return nil
 }
 
 // Context returns the loop context of server.
 func (s *Server) Context() context.Context {
-	return s.serverLoopCtx
+	return s.ctx
 }
 
 func (s *Server) startServerLoop(ctx context.Context) {
@@ -370,6 +370,8 @@ func (s *Server) startServerLoop(ctx context.Context) {
 	go s.leaderLoop()
 	go s.etcdLeaderLoop()
 	go s.serverMetricsLoop()
+	// Server has started.
+	atomic.StoreInt64(&s.isServing, 1)
 }
 
 func (s *Server) stopServerLoop() {
@@ -731,6 +733,11 @@ func (s *Server) GetCluster() *metapb.Cluster {
 		Id:           s.clusterID,
 		MaxPeerCount: uint32(s.scheduleOpt.GetReplication().GetMaxReplicas()),
 	}
+}
+
+// GetServerOption gets the option of the server.
+func (s *Server) GetServerOption() *config.ScheduleOption {
+	return s.scheduleOpt
 }
 
 // GetMetaRegions gets meta regions from cluster.
