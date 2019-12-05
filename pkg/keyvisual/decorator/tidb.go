@@ -98,18 +98,21 @@ func RangeTableID(newMatrix *matrix.Matrix) *matrix.Matrix {
 	keys := newMatrix.Keys
 	for i := 0; i < len(keys)-1; i++ {
 		key := keys[i].Key
+		// 先变成string形式的
 		keyBytes, err := hex.DecodeString(key)
 		if err != nil {
 			perr(err)
 			continue
 		}
+		// 类型转换成bytes形式的
 		decodeKey := codec.Key(keyBytes)
-
+		// 检查key的类型
 		isMeta, TableID := decodeKey.MetaOrTable()
 		if isMeta {
 			keys[i].Labels = append(keys[i].Labels, "meta")
 			continue
 		}
+		// 关键的纵坐标显示，之就要去tidb拿
 		keys[i].Labels = append(keys[i].Labels, fmt.Sprintf("table_%d", TableID))
 		if rowID := decodeKey.RowID(); rowID != 0 {
 			keys[i].Labels = append(keys[i].Labels, fmt.Sprintf("row_%d", rowID))

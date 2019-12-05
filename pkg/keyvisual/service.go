@@ -29,9 +29,13 @@ import (
 
 // KeyvisualService provide the service of key visual web.
 type KeyvisualService struct {
+	// 继承自服务端mux
 	*http.ServeMux
-	ctx   context.Context
-	svr   *server.Server
+	// 多routine可通用上下文
+	ctx context.Context
+	// pd的server
+	svr *server.Server
+	// 带读写锁的层状态
 	stats *Stat
 }
 
@@ -66,6 +70,7 @@ func RegisterKeyvisualService(svr *server.Server) (http.Handler, server.APIGroup
 		AssetInfo: AssetInfo,
 		Prefix:    "/public",
 	})
+	// 相当于controller层，前面是url，后面是对于的service函数
 	k.Handle("/pd/apis/keyvisual/v1/ui/", http.StripPrefix("/pd/apis/keyvisual/v1/ui/", fileServer))
 	k.HandleFunc("/pd/apis/keyvisual/v1/heatmaps", k.Heatmap)
 	k.Run()
@@ -78,7 +83,9 @@ func (s *KeyvisualService) Run() {
 }
 
 func (s *KeyvisualService) Heatmap(w http.ResponseWriter, r *http.Request) {
+	// 设定json格式
 	w.Header().Set("Content-type", "application/json")
+	// 获取前端传递过来的表单
 	form := r.URL.Query()
 	startKey := form.Get("startkey")
 	endKey := form.Get("endkey")

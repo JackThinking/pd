@@ -251,7 +251,9 @@ func (s *layerStat) Range(startTime time.Time, endTime time.Time) *matrix.Discre
 }
 
 type Stat struct {
+	// 继承自读写锁
 	sync.RWMutex
+	// 层状态
 	layers []*layerStat
 }
 

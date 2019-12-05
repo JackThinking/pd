@@ -39,14 +39,14 @@ import (
 func main() {
 	cfg := config.NewConfig()
 	err := cfg.Parse(os.Args[1:])
-
+	// 打印pd版本号
 	if cfg.Version {
 		server.PrintPDInfo()
 		exit(0)
 	}
 
 	defer logutil.LogPanic()
-
+	// 打印错误原因
 	switch errors.Cause(err) {
 	case nil:
 	case flag.ErrHelp:
@@ -91,6 +91,7 @@ func main() {
 	if err != nil {
 		log.Fatal("join meet error", zap.Error(err))
 	}
+	// 创建service
 	svr, err := server.CreateServer(cfg, api.NewHandler, keyvisual.RegisterKeyvisualService)
 	if err != nil {
 		log.Fatal("create server failed", zap.Error(err))
